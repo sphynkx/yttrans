@@ -3,13 +3,41 @@ import re
 import time
 
 
+# Aliases for unofficial Google web translate wrappers.
+# Goal: accept common BCP47 codes from app and convert to what wrappers expect.
+_LANG_ALIASES = {
+    # Hebrew: modern code is "he", but many Google web libs use old "iw"
+    "he": "iw",
+    "he-il": "iw",
+
+    # Javanese: modern ISO is "jv", google web often uses "jw"
+    "jv": "jw",
+
+    # Filipino/Tagalog: BCP47 may send "fil", google web often expects "tl"
+    "fil": "tl",
+
+    # Chinese variants: apps often lower-case, libs want zh-CN / zh-TW
+    "zh-cn": "zh-CN",
+    "zh-tw": "zh-TW",
+
+    # Manipuri (Meiteilon) script tag used by googletrans list
+    "mni-mtei": "mni-Mtei",
+}
+
+
+def _apply_alias(code: str) -> str:
+    if not code:
+        return code
+    low = code.strip().lower()
+    return _LANG_ALIASES.get(low, code)
+
+
 def _norm_lang(code: str) -> str:
     """
     Normalize language code for providers:
-    - keep simple 'en', 'ru'
-    - convert 'zh-cn' -> 'zh-CN'
-    - convert bcp47-ish 'pt-br' -> 'pt-BR'
-    - convert script tags 'mni-mtei' -> 'mni-Mtei'
+    - 'pt-br' -> 'pt-BR'
+    - 'zh-cn' -> 'zh-CN'
+    - script tags: 'mni-mtei' -> 'mni-Mtei'
     """
     if not code:
         return code
@@ -17,24 +45,16 @@ def _norm_lang(code: str) -> str:
     if c == "":
         return c
 
-    # common aliases / special cases
-    low = c.lower()
-    if low == "zh-cn":
-        return "zh-CN"
-    if low == "zh-tw":
-        return "zh-TW"
-    if low == "mni-mtei":
-        return "mni-Mtei"
+    # first, aliases
+    c = _apply_alias(c)
 
     # split by '-' or '_'
     parts = re.split(r"[-_]", c)
     if not parts:
         return c
 
-    # language
     parts[0] = parts[0].lower()
 
-    # remaining: region (2 letters or 3 digits) -> upper, script (4 letters) -> Title
     for i in range(1, len(parts)):
         p = parts[i]
         if len(p) == 2 and p.isalpha():
@@ -44,7 +64,6 @@ def _norm_lang(code: str) -> str:
         elif len(p) == 3 and p.isdigit():
             parts[i] = p
         else:
-            # leave as-is but prefer original case? we'll keep as-is
             parts[i] = p
 
     return "-".join(parts)
@@ -90,6 +109,9 @@ class GoogleWebProvider:
             return text
 
         src_lang = (src_lang or "auto").strip() or "auto"
+        if src_lang != "auto":
+            src_lang = _norm_lang(src_lang)
+
         tgt_lang = _norm_lang(tgt_lang)
 
         order = self.cfg.get("googleweb_order") or ["googletrans", "deep"]
@@ -101,7 +123,10 @@ class GoogleWebProvider:
 
                 if impl == "googletrans":
                     return self._translate_googletrans(text, src_lang, tgt_lang)
+
                 if impl == "deep":
+                    # deep-translator uses same web service, but supports slightly different codes.
+                    return self._translate_deep(text, src_lang, tgt_lang)
                     return self._translate_deep(text, src_lang, tgt_lang)
 
                 last_err = RuntimeError(f"unknown googleweb impl: {impl}")
@@ -113,7 +138,6 @@ class GoogleWebProvider:
     def _translate_deep(self, text, src_lang, tgt_lang):
         from deep_translator import GoogleTranslator
 
-        # deep-translator expects 'auto' or normalized codes like zh-CN
         return GoogleTranslator(source=src_lang, target=tgt_lang).translate(text)
 
     def _translate_googletrans(self, text, src_lang, tgt_lang):
