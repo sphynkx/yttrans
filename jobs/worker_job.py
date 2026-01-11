@@ -1,7 +1,13 @@
 import asyncio
 import logging
 
-from jobs.translate_job import QUEUE_KEY, get_status, set_status, store_result
+from jobs.translate_job import (
+    QUEUE_KEY,
+    get_status,
+    set_status,
+    store_result,
+    store_partial_result,
+)
 from services.providers.base_prv import build_provider
 from utils.time_ut import now_ms, now_iso_utc
 from utils.vtt_ut import (
@@ -49,6 +55,45 @@ def _delay_for_job(weight: int, num_langs: int) -> float:
 def _is_batch_delim_mismatch(err: Exception) -> bool:
     msg = str(err or "")
     return "delimiter split mismatch after translation" in msg
+
+
+def _publish_partial(r, job_id, video_id, state, percent, message, target_langs, entries, failed_langs, fallback_langs, errors, engine, weight, ttl_sec=3600):
+    """
+    Publish incremental progress for UI:
+      - ready_langs: langs successfully produced (either batch or fallback)
+      - total_langs: requested count
+      - meta: diagnostics
+    """
+    try:
+        ready_langs = [e.get("lang", "") for e in (entries or []) if (e.get("lang") or "").strip()]
+        total_langs = len(target_langs or [])
+
+        meta = {
+            "engine": engine,
+            "weight": weight,
+            "failed_langs": list(failed_langs or []),
+            "fallback_langs": list(fallback_langs or []),
+            "errors": dict(errors or {}),
+        }
+
+        store_partial_result(
+            r,
+            job_id,
+            {
+                "job_id": job_id,
+                "video_id": video_id,
+                "state": state,
+                "percent": int(percent or 0),
+                "message": message or "",
+                "ready_langs": ready_langs,
+                "total_langs": int(total_langs),
+                "meta": meta,
+            },
+            ttl_sec=ttl_sec,
+        )
+    except Exception:
+        # do not break job due to partial publishing
+        log.exception("job=%s video_id=%s partial_publish_failed", job_id, video_id)
 
 
 async def run_workers(cfg, r, inmem_requests, stop_event):
@@ -128,6 +173,23 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                     "errors": {},
                 },
             }
+
+            # initial partial (RUNNING, empty ready_langs)
+            _publish_partial(
+                r=r,
+                job_id=job_id,
+                video_id=video_id,
+                state="RUNNING",
+                percent=1,
+                message="running",
+                target_langs=target_langs,
+                entries=entries,
+                failed_langs=failed_langs,
+                fallback_langs=fallback_langs,
+                errors=errors,
+                engine=engine,
+                weight=weight,
+            )
 
             try:
                 for lang in target_langs:
@@ -253,6 +315,23 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                         },
                     )
 
+                    # publish partial after each language attempt
+                    _publish_partial(
+                        r=r,
+                        job_id=job_id,
+                        video_id=video_id,
+                        state="RUNNING",
+                        percent=percent,
+                        message=msg,
+                        target_langs=target_langs,
+                        entries=entries,
+                        failed_langs=failed_langs,
+                        fallback_langs=fallback_langs,
+                        errors=errors,
+                        engine=engine,
+                        weight=weight,
+                    )
+
                     await asyncio.sleep(delay_sec)
 
                 duration_ms = now_ms() - started
@@ -294,6 +373,23 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                     },
                 )
 
+                # final partial publish (DONE)
+                _publish_partial(
+                    r=r,
+                    job_id=job_id,
+                    video_id=video_id,
+                    state="DONE",
+                    percent=100,
+                    message=msg,
+                    target_langs=target_langs,
+                    entries=entries,
+                    failed_langs=failed_langs,
+                    fallback_langs=fallback_langs,
+                    errors=errors,
+                    engine=engine,
+                    weight=weight,
+                )
+
                 log.info(
                     "job=%s video_id=%s state=DONE duration_ms=%s ok_langs=%s failed_langs=%s fallback_langs=%s",
                     job_id,
@@ -316,9 +412,26 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                     meta={"engine": engine},
                 )
 
+                _publish_partial(
+                    r=r,
+                    job_id=job_id,
+                    video_id=video_id,
+                    state="FAILED",
+                    percent=0,
+                    message=str(e),
+                    target_langs=target_langs,
+                    entries=entries,
+                    failed_langs=failed_langs,
+                    fallback_langs=fallback_langs,
+                    errors=errors,
+                    engine=engine,
+                    weight=weight,
+                )
+
     loop = asyncio.get_running_loop()
 
     while not stop_event.is_set():
+
         def brpop():
             return r.brpop(QUEUE_KEY, timeout=1)
 

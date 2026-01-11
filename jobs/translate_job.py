@@ -15,6 +15,10 @@ def result_key(job_id):
     return f"yttrans:result:{job_id}"
 
 
+def partial_key(job_id):
+    return f"yttrans:partial:{job_id}"
+
+
 def create_job(r, video_id, engine, target_langs, src_lang):
     job_id = str(uuid.uuid4())
 
@@ -98,3 +102,18 @@ def load_result(r, job_id):
 
 def delete_result(r, job_id):
     r.delete(result_key(job_id))
+
+
+def store_partial_result(r, job_id, partial_obj, ttl_sec=3600):
+    r.set(partial_key(job_id), dumps(partial_obj), ex=int(ttl_sec))
+
+
+def load_partial_result(r, job_id):
+    s = r.get(partial_key(job_id))
+    if not s:
+        return None
+    return loads(s)
+
+
+def delete_partial_result(r, job_id):
+    r.delete(partial_key(job_id))

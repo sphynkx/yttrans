@@ -3,7 +3,13 @@ import logging
 import grpc
 from google.protobuf.struct_pb2 import Struct
 
-from jobs.translate_job import create_job, delete_result, get_status, load_result
+from jobs.translate_job import (
+    create_job,
+    delete_result,
+    get_status,
+    load_result,
+    load_partial_result,
+)
 from utils.auth_ut import require_auth_if_configured
 
 from proto import yttrans_pb2, yttrans_pb2_grpc
@@ -75,11 +81,14 @@ class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "target_langs is required")
 
         engine = self.cfg.get("engine")
-        job_id = create_job(self.r, video_id=video_id, engine=engine, target_langs=target_langs, src_lang=src_lang)
+        job_id = create_job(
+            self.r,
+            video_id=video_id,
+            engine=engine,
+            target_langs=target_langs,
+            src_lang=src_lang,
+        )
 
-        # Store request payload in memory for worker to pick up (MVP).
-        # IMPORTANT: This means if service restarts, queued jobs lose payload and will fail.
-        # For stability later: store src_vtt/options in Redis too (or a DB).
         options = {}
         try:
             options = dict(request.options) if request.options else {}
@@ -113,7 +122,6 @@ class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
         meta = dict(st.get("meta") or {})
         meta["engine"] = st.get("engine") or self.cfg.get("engine")
 
-        # surface errors
         if st.get("err"):
             meta["err"] = st["err"]
 
@@ -123,6 +131,50 @@ class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
             state=_state_to_proto(st.get("state")),
             percent=int(st.get("percent") or 0),
             message=st.get("message") or "",
+            meta=_dict_to_struct(meta),
+        )
+
+    def GetPartialResult(self, request, context):
+        """
+        New RPC: must work for QUEUED/RUNNING/DONE/FAILED.
+        Returns ready_langs accumulated so far (no VTT payload).
+        """
+        require_auth_if_configured(context, self.cfg)
+
+        job_id = (request.job_id or "").strip()
+        if not job_id:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "job_id is required")
+
+        st = get_status(self.r, job_id)
+        if not st:
+            context.abort(grpc.StatusCode.NOT_FOUND, "job not found")
+
+        part = load_partial_result(self.r, job_id) or {}
+
+        ready_langs = part.get("ready_langs") or []
+        total_langs = part.get("total_langs")
+        if total_langs is None:
+            total_langs = len(st.get("target_langs") or [])
+
+        meta = {}
+        try:
+            meta = dict(part.get("meta") or {})
+        except Exception:
+            meta = {}
+
+        # Merge engine + status errors into meta
+        meta["engine"] = st.get("engine") or self.cfg.get("engine")
+        if st.get("err"):
+            meta["err"] = st.get("err")
+
+        return yttrans_pb2.PartialTranslationsResult(
+            job_id=job_id,
+            video_id=st.get("video_id", ""),
+            state=_state_to_proto(st.get("state")),
+            percent=int(st.get("percent") or 0),
+            message=st.get("message") or "",
+            ready_langs=list(ready_langs),
+            total_langs=int(total_langs or 0),
             meta=_dict_to_struct(meta),
         )
 
@@ -158,7 +210,5 @@ class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
             meta=_dict_to_struct(meta),
         )
 
-        # delete after successful fetch
         delete_result(self.r, job_id)
-
         return reply
