@@ -4,7 +4,7 @@ import logging
 from jobs.translate_job import QUEUE_KEY, get_status, set_status, store_result
 from services.providers.base_prv import build_provider
 from utils.time_ut import now_ms, now_iso_utc
-from utils.vtt_ut import translate_vtt
+from utils.vtt_ut import extract_translatable_lines, inject_translated_lines, batch_translate_texts
 
 
 log = logging.getLogger("yttrans.worker_job")
@@ -62,11 +62,22 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
             done = 0
 
             try:
-                for lang in target_langs:
-                    def translate_line_sync(line):
-                        return provider.translate(text=line, src_lang=src_lang, tgt_lang=lang)
+                base_lines, idxs, texts = extract_translatable_lines(src_vtt)
+                src_has_trailing_nl = src_vtt.endswith("\n")
 
-                    vtt_tgt = translate_vtt(src_vtt, translate_line_sync)
+                for lang in target_langs:
+                    def translate_block_sync(block_text):
+                        return provider.translate(text=block_text, src_lang=src_lang, tgt_lang=lang)
+
+                    translated_texts = batch_translate_texts(
+                        texts,
+                        translate_block_sync,
+                        max_total_chars=8000,
+                    )
+
+                    vtt_body = inject_translated_lines(base_lines, idxs, translated_texts)
+                    vtt_tgt = vtt_body + ("\n" if src_has_trailing_nl else "")
+
                     entries.append({"lang": lang, "vtt": vtt_tgt})
 
                     done += 1

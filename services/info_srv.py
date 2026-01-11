@@ -1,7 +1,7 @@
-import os
 import time
 
 from utils.auth_ut import require_auth_if_configured
+from services.providers.base_prv import build_provider
 
 from proto import info_pb2, info_pb2_grpc
 
@@ -34,6 +34,13 @@ class InfoService(info_pb2_grpc.InfoServicer):
         require_auth_if_configured(context, self.cfg)
 
         langs = self.cfg.get("langs") or []
+        if not langs:
+            try:
+                provider = build_provider(self.cfg)
+                langs = provider.list_languages() or []
+            except Exception:
+                langs = []
+
         return info_pb2.InfoLanguagesResponse(
             target_langs=langs,
             default_source_lang=self.cfg.get("default_source_lang", "auto"),

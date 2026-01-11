@@ -5,3 +5,5 @@ grpcio-health-checking==1.67.1
 protobuf==5.28.3
 redis==5.0.8
 python-dotenv==1.0.1
+deep-translator==1.11.4
+googletrans==4.0.0rc1

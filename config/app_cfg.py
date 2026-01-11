@@ -37,7 +37,7 @@ def load_config():
     instance_id = _env("INSTANCE_ID", hostname)
 
     engine = _env("YTTRANS_ENGINE", "dummy")
-    langs = _env_list("YTTRANS_LANGS", "en,ru,uk,de")
+    langs = _env_list("YTTRANS_LANGS", "")
 
     timeout_sec = _env_int("YTTRANS_TIMEOUT_SEC", 60)
     max_parallel = _env_int("YTTRANS_MAX_PARALLEL", 2)
