@@ -43,6 +43,9 @@ def load_config():
     max_parallel = _env_int("YTTRANS_MAX_PARALLEL", 2)
     redis_url = _env("YTTRANS_QUEUE_REDIS_URL", "redis://localhost:6379/0")
 
+    # Limits for google-web
+    max_total_chars = _env_int("YTTRANS_MAXTOTALCHARS", 4500)
+
     auth_token = _env("AUTH_TOKEN", "")
     log_level = _env("LOG_LEVEL", "info")
 
@@ -62,6 +65,7 @@ def load_config():
         "timeout_sec": timeout_sec,
         "max_parallel": max_parallel,
         "redis_url": redis_url,
+        "max_total_chars": max_total_chars,
         "auth_token": auth_token,
         "log_level": log_level,
         "build_hash": build_hash,

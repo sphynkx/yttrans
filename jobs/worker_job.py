@@ -57,7 +57,22 @@ def _is_batch_delim_mismatch(err: Exception) -> bool:
     return "delimiter split mismatch after translation" in msg
 
 
-def _publish_partial(r, job_id, video_id, state, percent, message, target_langs, entries, failed_langs, fallback_langs, errors, engine, weight, ttl_sec=3600):
+def _publish_partial(
+    r,
+    job_id,
+    video_id,
+    state,
+    percent,
+    message,
+    target_langs,
+    entries,
+    failed_langs,
+    fallback_langs,
+    errors,
+    engine,
+    weight,
+    ttl_sec=3600,
+):
     """
     Publish incremental progress for UI:
       - ready_langs: langs successfully produced (either batch or fallback)
@@ -92,7 +107,6 @@ def _publish_partial(r, job_id, video_id, state, percent, message, target_langs,
             ttl_sec=ttl_sec,
         )
     except Exception:
-        # do not break job due to partial publishing
         log.exception("job=%s video_id=%s partial_publish_failed", job_id, video_id)
 
 
@@ -103,6 +117,9 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
     max_parallel = int(cfg.get("max_parallel") or 1)
     sem = asyncio.Semaphore(max_parallel)
     provider = build_provider(cfg)
+
+    # pull from global config
+    max_total_chars = int(cfg.get("max_total_chars") or 4500)
 
     async def one_job(job_id):
         async with sem:
@@ -151,7 +168,6 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
             errors = {}
             fallback_langs = []
 
-            # preparse VTT once
             base_lines, idxs, texts = extract_translatable_lines(src_vtt)
             src_has_trailing_nl = src_vtt.endswith("\n")
 
@@ -174,7 +190,6 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                 },
             }
 
-            # initial partial (RUNNING, empty ready_langs)
             _publish_partial(
                 r=r,
                 job_id=job_id,
@@ -195,23 +210,23 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                 for lang in target_langs:
                     lang_started = now_ms()
                     log.info(
-                        "job=%s video_id=%s lang=%s state=TRANSLATING weight=%s delay_sec=%.2f",
+                        "job=%s video_id=%s lang=%s state=TRANSLATING weight=%s delay_sec=%.2f max_total_chars=%s",
                         job_id,
                         video_id,
                         lang,
                         weight,
                         delay_sec,
+                        max_total_chars,
                     )
 
                     try:
-                        # 1) try batch translation (better context + fewer requests)
                         def translate_block_sync(block_text):
                             return provider.translate(text=block_text, src_lang=src_lang, tgt_lang=lang)
 
                         translated_texts = batch_translate_texts(
                             texts,
                             translate_block_sync,
-                            max_total_chars=8000,
+                            max_total_chars=max_total_chars,
                         )
 
                         vtt_body = inject_translated_lines(base_lines, idxs, translated_texts)
@@ -233,7 +248,6 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                         )
 
                     except Exception as e:
-                        # 2) fallback to line-by-line ONLY for this language
                         if _is_batch_delim_mismatch(e):
                             log.warning(
                                 "job=%s video_id=%s lang=%s batch_failed_delim_mismatch -> fallback=line_by_line err=%s",
@@ -315,7 +329,6 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                         },
                     )
 
-                    # publish partial after each language attempt
                     _publish_partial(
                         r=r,
                         job_id=job_id,
@@ -373,7 +386,6 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                     },
                 )
 
-                # final partial publish (DONE)
                 _publish_partial(
                     r=r,
                     job_id=job_id,
