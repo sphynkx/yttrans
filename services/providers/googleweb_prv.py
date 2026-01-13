@@ -1,26 +1,16 @@
 import asyncio
 import re
 import time
+from typing import Optional
 
 
-# Aliases for unofficial Google web translate wrappers.
-# Goal: accept common BCP47 codes from app and convert to what wrappers expect.
 _LANG_ALIASES = {
-    # Hebrew: modern code is "he", but many Google web libs use old "iw"
     "he": "iw",
     "he-il": "iw",
-
-    # Javanese: modern ISO is "jv", google web often uses "jw"
     "jv": "jw",
-
-    # Filipino/Tagalog: BCP47 may send "fil", google web often expects "tl"
     "fil": "tl",
-
-    # Chinese variants: apps often lower-case, libs want zh-CN / zh-TW
     "zh-cn": "zh-CN",
     "zh-tw": "zh-TW",
-
-    # Manipuri (Meiteilon) script tag used by googletrans list
     "mni-mtei": "mni-Mtei",
 }
 
@@ -33,22 +23,14 @@ def _apply_alias(code: str) -> str:
 
 
 def _norm_lang(code: str) -> str:
-    """
-    Normalize language code for providers:
-    - 'pt-br' -> 'pt-BR'
-    - 'zh-cn' -> 'zh-CN'
-    - script tags: 'mni-mtei' -> 'mni-Mtei'
-    """
     if not code:
         return code
     c = code.strip()
     if c == "":
         return c
 
-    # first, aliases
     c = _apply_alias(c)
 
-    # split by '-' or '_'
     parts = re.split(r"[-_]", c)
     if not parts:
         return c
@@ -69,14 +51,51 @@ def _norm_lang(code: str) -> str:
     return "-".join(parts)
 
 
+def _is_transient_error(e: Exception) -> bool:
+    """
+    Detect errors that are likely temporary:
+    - rate limit / captcha / http 429/503
+    - connection reset / timeouts
+    deep-translator often raises generic Exception with these messages.
+    """
+    msg = str(e or "").lower()
+
+    needles = [
+        "api connection error",
+        "request exception",
+        "too many requests",
+        "429",
+        "503",
+        "temporarily",
+        "timeout",
+        "timed out",
+        "connection reset",
+        "connection aborted",
+        "remote end closed connection",
+        "ssl",
+        "captcha",
+        "rate limit",
+        "service unavailable",
+        "bad gateway",
+        "proxy error",
+    ]
+    return any(n in msg for n in needles)
+
+
 class GoogleWebProvider:
     name = "googleweb"
 
     def __init__(self, cfg):
         self.cfg = cfg
-        qps = int(cfg.get("googleweb_qps") or 0)
+
+        # QPS throttling across all translate calls in this process.
+        # Set googleweb_qps to 0.5..1 for stability.
+        qps = float(cfg.get("googleweb_qps") or 0)
         self._min_interval = (1.0 / float(qps)) if qps > 0 else 0.0
         self._last_call_ts = 0.0
+
+        self._retry_attempts = int(cfg.get("googleweb_retry_attempts") or 3)
+        self._retry_backoff_sec = float(cfg.get("googleweb_retry_backoff_sec") or 20)
 
     def list_languages(self):
         whitelist = self.cfg.get("langs") or []
@@ -114,24 +133,39 @@ class GoogleWebProvider:
 
         tgt_lang = _norm_lang(tgt_lang)
 
-        order = self.cfg.get("googleweb_order") or ["googletrans", "deep"]
-        last_err = None
+        # Prefer deep-translator first (often more stable than googletrans)
+        order = self.cfg.get("googleweb_order") or ["deep", "googletrans"]
 
-        for impl in order:
-            try:
-                self._throttle()
+        last_err: Optional[Exception] = None
 
-                if impl == "googletrans":
-                    return self._translate_googletrans(text, src_lang, tgt_lang)
+        # Retry loop only for transient errors.
+        # We retry the whole impl chain, because sometimes one impl fails and the other works.
+        attempts = max(1, int(self._retry_attempts))
+        for attempt in range(1, attempts + 1):
+            for impl in order:
+                try:
+                    self._throttle()
 
-                if impl == "deep":
-                    # deep-translator uses same web service, but supports slightly different codes.
-                    return self._translate_deep(text, src_lang, tgt_lang)
-                    return self._translate_deep(text, src_lang, tgt_lang)
+                    if impl == "googletrans":
+                        return self._translate_googletrans(text, src_lang, tgt_lang)
 
-                last_err = RuntimeError(f"unknown googleweb impl: {impl}")
-            except Exception as e:
-                last_err = e
+                    if impl == "deep":
+                        return self._translate_deep(text, src_lang, tgt_lang)
+
+                    last_err = RuntimeError(f"unknown googleweb impl: {impl}")
+
+                except Exception as e:
+                    last_err = e
+                    # try next impl in chain
+
+            # if we reached here, both impls failed
+            if last_err and _is_transient_error(last_err) and attempt < attempts:
+                # exponential-ish backoff
+                sleep_s = self._retry_backoff_sec * (1 + (attempt - 1) * 0.5)
+                time.sleep(sleep_s)
+                continue
+
+            break
 
         raise RuntimeError(f"googleweb translate failed: {last_err}")
 
