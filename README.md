@@ -30,13 +30,30 @@ cd proto
 ./gen_proto.sh
 cd ..
 ```
+### Manual run
+For testing purposes:
+```bash
+cd /opt/yttrans
+./run.sh
+```
 
+
+### Systemd Service
 Configure and run as systemd service.
 ```bash
 cp install/yttrans.service /etc/systemd/system/
 systemctl enable --now yttrans
 journalctl -u yttrans -f
 ```
+
+
+### Docker install
+Make sure that you have `/opt/yttrans/.env`. Otherwise copy it from `/opt/yttrans/install/.env.example`. Then:
+```bash
+cd /opt/yttrans/install/docker
+docker-compose up -d --build
+```
+
 
 ## Test and usage
 Health check/show methods via reflections:
