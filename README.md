@@ -21,6 +21,7 @@ Optionally - configure `.env` with your options.
 Install Redis:
 ```bash
 dnf -y install redis
+systemctl enable --now redis
 ```
 
 Make sure that proto-file `proto/yttrans.proto` is same as in `yutrube` installation. If changes are made - it need to regenerate by commands:
