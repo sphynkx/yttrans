@@ -1,0 +1,28 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    volumes:
+      - redis_data:/data
+
+  yttrans:
+    build:
+      context: ../..
+      dockerfile: install/docker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - redis
+    ports:
+      - "9095:9095"
+    env_file:
+      - ../../.env
+    environment:
+      YTTRANS_QUEUE_REDIS_URL: redis://redis:6379/0
+      YTTRANS_HOST: 0.0.0.0
+      YTTRANS_PORT: 9095
+    volumes:
+      - ../../.env:/opt/yttrans/.env:ro
+
+volumes:
+  redis_data:
