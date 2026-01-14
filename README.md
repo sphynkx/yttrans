@@ -53,7 +53,7 @@ grpcurl -plaintext 127.0.0.1:9095 describe grpc.health.v1.Info
 
 List of available languages:
 ```bash
-grpcurl -plaintext 127.0.0.1:9095 grpc.health.v1.Info/Languages
+grpcurl -plaintext 127.0.0.1:9095 yttrans.v1.Translator/ListLanguages
 ```
 
 Manual request and receive `JOB_ID`:
