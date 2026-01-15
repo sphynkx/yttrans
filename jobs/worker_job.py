@@ -118,6 +118,17 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
     sem = asyncio.Semaphore(max_parallel)
     provider = build_provider(cfg)
 
+    # Warmup: load model at service startup (optional)
+    try:
+        engine_l = (cfg.get("engine") or "").lower()
+        if engine_l == "fbm2m100" and int(cfg.get("fbm2m100_warmup") or 0) == 1:
+            log.info("fbm2m100 warmup: loading model...")
+            if hasattr(provider, "warmup"):
+                provider.warmup()
+            log.info("fbm2m100 warmup: done")
+    except Exception as e:
+        log.warning("fbm2m100 warmup failed: %s", str(e))
+
     # pull from global config
     max_total_chars = int(cfg.get("max_total_chars") or 4500)
 
@@ -220,14 +231,18 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                     )
 
                     try:
-                        def translate_block_sync(block_text):
-                            return provider.translate(text=block_text, src_lang=src_lang, tgt_lang=lang)
+                        # Prefer provider-native batch (no delimiters)
+                        if hasattr(provider, "translate_batch"):
+                            translated_texts = provider.translate_batch(texts=texts, src_lang=src_lang, tgt_lang=lang)
+                        else:
+                            def translate_block_sync(block_text):
+                                return provider.translate(text=block_text, src_lang=src_lang, tgt_lang=lang)
 
-                        translated_texts = batch_translate_texts(
-                            texts,
-                            translate_block_sync,
-                            max_total_chars=max_total_chars,
-                        )
+                            translated_texts = batch_translate_texts(
+                                texts,
+                                translate_block_sync,
+                                max_total_chars=max_total_chars,
+                            )
 
                         vtt_body = inject_translated_lines(base_lines, idxs, translated_texts)
                         vtt_tgt = vtt_body + ("\n" if src_has_trailing_nl else "")

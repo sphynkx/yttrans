@@ -22,7 +22,10 @@ services:
       YTTRANS_HOST: 0.0.0.0
       YTTRANS_PORT: 9095
     volumes:
+      - ../..:/opt/yttrans
       - ../../.env:/opt/yttrans/.env:ro
+      - hf_cache:/opt/yttrans/.cache/huggingface
 
 volumes:
   redis_data:
+  hf_cache:

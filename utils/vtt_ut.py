@@ -40,14 +40,17 @@ def inject_translated_lines(lines, idxs, translated_texts):
     return "\n".join(out)
 
 
+# Use rare unicode brackets to make delimiter less likely to be changed by MT models.
+# Marker itself is also structured to avoid underscores/words that can be normalized.
 def _make_delimiter(token: str) -> str:
-    return f"\n__YTTRANS_SPLIT_{token}__\n"
+    # Keep delimiter on its own lines, but marker itself is a single atomic-looking chunk.
+    return f"\n⟦YTTRANS:{token}⟧\n"
 
 
 def _pick_unique_token(texts):
     token = uuid.uuid4().hex[:12]
     hay = "\n".join(texts or [])
-    while f"YTTRANS_SPLIT_{token}" in hay:
+    while f"YTTRANS:{token}" in hay:
         token = uuid.uuid4().hex[:12]
     return token
 
@@ -135,14 +138,32 @@ def _split_large_text(text: str, max_len: int):
 
 
 def _split_by_delim_token(translated_text: str, token: str):
-    pat = re.compile(rf"(?:\s*_{{0,4}})?YTTRANS_SPLIT_{re.escape(token)}(?:_{{0,4}}\s*)?", flags=re.MULTILINE)
-    pieces = pat.split(translated_text)
-    pieces = [p for p in pieces if p is not None]
-    if pieces and pieces[0] == "":
-        pieces = pieces[1:]
-    if pieces and pieces[-1] == "":
-        pieces = pieces[:-1]
-    return pieces
+    # Try strict match first (best case).
+    marker = f"⟦YTTRANS:{token}⟧"
+    if marker in translated_text:
+        pieces = translated_text.split(marker)
+    else:
+        # Fallback: allow some whitespace around marker and tolerate rare bracket normalization.
+        # We still keep it strict enough to avoid accidental splits.
+        pat = re.compile(
+            rf"\s*[⟦\[\(]YTTRANS:{re.escape(token)}[⟧\]\)]\s*",
+            flags=re.MULTILINE,
+        )
+        pieces = pat.split(translated_text)
+
+    # cleanup: strip only surrounding newlines/spaces introduced by delimiter lines
+    out = []
+    for p in pieces:
+        if p is None:
+            continue
+        # remove only one leading/trailing newline possibly introduced by delimiter placement
+        out.append(p.strip("\n"))
+    # remove potential empty head/tail
+    if out and out[0] == "":
+        out = out[1:]
+    if out and out[-1] == "":
+        out = out[:-1]
+    return out
 
 
 def batch_translate_texts(texts, translate_text_fn, max_total_chars=4500):

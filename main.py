@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 from config.app_cfg import load_config
 from config.googleweb_cfg import load_googleweb_config
+from config.fbm2m100_cfg import load_fbm2m100_config
 from services.grpc_srv import serve
 
 
@@ -24,6 +25,8 @@ def main():
     engine = (cfg.get("engine") or "").lower()
     if engine == "googleweb":
         cfg.update(load_googleweb_config())
+    if engine == "fbm2m100":
+        cfg.update(load_fbm2m100_config())
 
     serve(cfg, host=args.host, port=args.port)
 

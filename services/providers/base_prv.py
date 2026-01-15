@@ -4,6 +4,7 @@ from services.providers.deepl_prv import DeepLProvider
 from services.providers.aws_prv import AwsProvider
 from services.providers.hf_marian_prv import HfMarianProvider
 from services.providers.googleweb_prv import GoogleWebProvider
+from services.providers.fbm2m100_prv import Fbm2m100Provider
 
 
 def build_provider(cfg):
@@ -11,6 +12,9 @@ def build_provider(cfg):
 
     if engine == "googleweb":
         return GoogleWebProvider(cfg)
+
+    if engine == "fbm2m100":
+        return Fbm2m100Provider(cfg)
 
     if engine == "google":
         return GoogleProvider(cfg)
