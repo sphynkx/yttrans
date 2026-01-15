@@ -30,6 +30,8 @@ cd proto
 ./gen_proto.sh
 cd ..
 ```
+
+
 ### Manual run
 For testing purposes:
 ```bash
@@ -53,6 +55,40 @@ Make sure that you have `/opt/yttrans/.env`. Otherwise copy it from `/opt/yttran
 cd /opt/yttrans/install/docker
 docker-compose up -d --build
 ```
+In case of configuring with `fbm2m100` provider recommended to send translation task:
+```bash
+grpcurl -plaintext 127.0.0.1:9095 yttrans.v1.Translator/ListLanguages
+grpcurl -plaintext -d '{"video_id":"XXXXXXXXXXXX","src_vtt":"WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nHello\n","src_lang":"en","target_langs":["ru","de","es","bg"]}' 127.0.0.1:9095 yttrans.v1.Translator/SubmitTranslate
+```
+This command initiates download of big model files and load model into memory.
+
+
+### Configure provider with M2M100 model
+By default service use simple provider `googleweb`. You may switch on another provider that works with `facebook/m2m100_418M` model. This model requires up to 8Gb RAM, up to 5Gb disk space, preferably GPU.
+
+In `.env` set appropriate provider to `YTTRANS_ENGINE` and add specific params:
+```conf
+YTTRANS_ENGINE=fbm2m100
+
+# Params for fbm2m100 provider
+FBM2M100_MODEL=facebook/m2m100_418M
+FBM2M100_DEVICE=cpu
+FBM2M100_NUM_BEAMS=1
+FBM2M100_MAX_NEW_TOKENS=128
+# FBM2M100_TORCH_THREADS=4
+FBM2M100_WARMUP=1
+FBM2M100_MAX_INPUT_TOKENS=1024
+FBM2M100_BATCH_SIZE=8
+```
+Restart service or docker container:
+```bash
+docker-compose restart yttrans
+```
+Check list of available languages and engine name:
+```bash
+grpcurl -plaintext 127.0.0.1:9095 yttrans.v1.Translator/ListLanguages
+```
+It is recommended to run this command - it will help the model fit into memory faster.
 
 
 ## Test and usage
