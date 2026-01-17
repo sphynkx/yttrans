@@ -26,6 +26,14 @@ class Fbnllb200d600mProvider:
         self._nllb_codes_cache = None
         self._iso3_index_cache = None
 
+    def get_meta(self):
+        # Do not force model load here; just report configured values.
+        return {
+            "engine": self.name,
+            "model": (self.cfg.get("fbnllb200d600m_model") or "").strip(),
+            "device": (self.cfg.get("fbnllb200d600m_device") or "").strip(),
+        }
+
     def warmup(self):
         self._ensure_loaded()
 

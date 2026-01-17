@@ -38,6 +38,26 @@ def _dict_to_struct(d):
     return st
 
 
+def _provider_meta(provider, cfg):
+    """
+    Returns dict with extra meta fields:
+      engine, model, device, ...
+    Provider may optionally define get_meta() -> dict.
+    """
+    meta = {"engine": cfg.get("engine")}
+
+    try:
+        if provider and hasattr(provider, "get_meta"):
+            m = provider.get_meta()
+            if isinstance(m, dict):
+                # merge (provider can override engine if it wants)
+                meta.update({k: v for k, v in m.items() if v is not None and v != ""})
+    except Exception as e:
+        meta["warning"] = f"provider_get_meta_failed: {e}"
+
+    return meta
+
+
 class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
     def __init__(self, cfg, r, inmem_requests, provider):
         self.cfg = cfg
@@ -49,7 +69,8 @@ class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
         require_auth_if_configured(context, self.cfg)
 
         langs = []
-        meta = {"engine": self.cfg.get("engine")}
+        meta = _provider_meta(self.provider, self.cfg)
+
         try:
             langs = self.provider.list_languages()
             if not langs:
@@ -122,6 +143,9 @@ class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
         meta = dict(st.get("meta") or {})
         meta["engine"] = st.get("engine") or self.cfg.get("engine")
 
+        # add provider info (model/device) for UI
+        meta.update(_provider_meta(self.provider, self.cfg))
+
         if st.get("err"):
             meta["err"] = st["err"]
 
@@ -162,8 +186,10 @@ class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
         except Exception:
             meta = {}
 
-        # Merge engine + status errors into meta
+        # Merge engine + provider info + status errors into meta
         meta["engine"] = st.get("engine") or self.cfg.get("engine")
+        meta.update(_provider_meta(self.provider, self.cfg))
+
         if st.get("err"):
             meta["err"] = st.get("err")
 
@@ -202,6 +228,9 @@ class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
 
         meta = res.get("meta") or {}
         meta["engine"] = meta.get("engine") or st.get("engine") or self.cfg.get("engine")
+
+        # add provider info (model/device)
+        meta.update(_provider_meta(self.provider, self.cfg))
 
         reply = yttrans_pb2.TranslationsResult(
             video_id=res.get("video_id", st.get("video_id", "")),

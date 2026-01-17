@@ -16,6 +16,14 @@ class Fbm2m100Provider:
         self._langs_cache = None
         self._langs_lock = threading.Lock()
 
+    def get_meta(self):
+        # Do not force model load here; just report configured values.
+        return {
+            "engine": self.name,
+            "model": (self.cfg.get("fbm2m100_model") or "").strip(),
+            "device": (self.cfg.get("fbm2m100_device") or "").strip(),
+        }
+
     def warmup(self):
         self._ensure_loaded()
 

@@ -95,6 +95,10 @@ Restart service or docker container:
 ```bash
 docker-compose restart yttrans
 ```
+or, in case of `.env` modifications:
+```bash
+docker-compose up -d --force-recreate yttrans
+```
 Check list of available languages and engine name:
 ```bash
 grpcurl -plaintext 127.0.0.1:9095 yttrans.v1.Translator/ListLanguages
@@ -121,6 +125,10 @@ To parallel handle several langs - edit `FBNLLB200D600M_MAX_CONCURRENCY`.
 Restart service or docker container:
 ```bash
 docker-compose restart yttrans
+```
+or, in case of `.env` modifications:
+```bash
+docker-compose up -d --force-recreate yttrans
 ```
 Check list of available languages and engine name:
 ```bash
