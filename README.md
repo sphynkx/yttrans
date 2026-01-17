@@ -1,6 +1,10 @@
 [yttrans](https://github.com/sphynkx/yttrans) is supplemental service for [yurtube app](https://github.com/sphynkx/yurtube), based on gRPC+protobuf. It generates translations of captions on many different languages.
 
-Currently service support Google Translate service but may be expand with other translation providers or with custom models.
+Currently service supports next translation services and models:
+* __Google__ __Translate__ web-service (default) - simplest variant without any hardware requirements, useful for initial tests only.
+* __M2M100__ __418M__ lang model from Facebook (~100 langs, [huggingface page](https://huggingface.co/facebook/m2m100_418M))
+* __NLLB-200__ lang model from Facebook (~200 langs, [huggingface page](https://huggingface.co/facebook/nllb-200-distilled-600M))
+
 
 
 ## Install and configure.
@@ -63,8 +67,12 @@ grpcurl -plaintext -d '{"video_id":"XXXXXXXXXXXX","src_vtt":"WEBVTT\n\n00:00:00.
 This command initiates download of big model files and load model into memory.
 
 
+### Google Web provider
+Provider `googleweb` uses [Google Translate](https://translate.google.com/) service. Configured as default. Supports about 100 langs but may break on big texts and many requests. Recommended for test purposes only.
+
+
 ### Configure provider with M2M100 model
-By default service use simple provider `googleweb`. You may switch on another provider that works with `facebook/m2m100_418M` model. This model requires up to 8Gb RAM, up to 5Gb disk space, preferably GPU.
+Provider `fbm2m100` works with model `M2M100 418M` from Facebook. This model supports about 100 langs. See details on its [huggingface page](https://huggingface.co/facebook/m2m100_418M).
 
 In `.env` set appropriate provider to `YTTRANS_ENGINE` and add specific params:
 ```conf
@@ -79,6 +87,30 @@ FBM2M100_MAX_NEW_TOKENS=128
 FBM2M100_WARMUP=1
 FBM2M100_MAX_INPUT_TOKENS=1024
 FBM2M100_BATCH_SIZE=8
+```
+Restart service or docker container:
+```bash
+docker-compose restart yttrans
+```
+Check list of available languages and engine name:
+```bash
+grpcurl -plaintext 127.0.0.1:9095 yttrans.v1.Translator/ListLanguages
+```
+It is recommended to run this command - it will help the model fit into memory faster.
+
+
+### Configure provider with NLLB-200 model
+Provider `fbnllb200d600m` supports translation using __NLLB-200__ __distilled__ __600M__ model from Facebook. Details about model see on its [huggingface page](https://huggingface.co/facebook/nllb-200-distilled-600M). Model supports about 200 languages. Configuration is analogical. In `.env` set appropriate provider to `YTTRANS_ENGINE` and add specific params:
+```conf
+YTTRANS_ENGINE=fbm2m100
+
+# Params for fbnllb200d600m provider
+FBNLLB200D600M_WARMUP=1
+FBNLLB200D600M_BATCH_SIZE=8
+FBNLLB200D600M_NUM_BEAMS=1
+FBNLLB200D600M_MAX_NEW_TOKENS=128
+FBNLLB200D600M_MAX_INPUT_TOKENS=1024
+# FBNLLB200D600M_TORCH_THREADS=4
 ```
 Restart service or docker container:
 ```bash
