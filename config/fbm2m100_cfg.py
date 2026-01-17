@@ -35,4 +35,5 @@ def load_fbm2m100_config():
         "fbm2m100_num_beams": _env_int("FBM2M100_NUM_BEAMS", 1),
         "fbm2m100_warmup": _env_int("FBM2M100_WARMUP", 0),
         "fbm2m100_batch_size": _env_int("FBM2M100_BATCH_SIZE", 8),
+        "fbm2m100_max_concurrency": _env_int("FBM2M100_MAX_CONCURRENCY", 1),
     }

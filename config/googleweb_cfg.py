@@ -30,4 +30,5 @@ def load_googleweb_config():
         "googleweb_order": _env_list("GOOGLEWEB_ORDER", "googletrans,deep"),
         "googleweb_qps": _env_int("GOOGLEWEB_QPS", 2),
         "googleweb_timeout_sec": _env_int("GOOGLEWEB_TIMEOUT_SEC", 10),
+        "googleweb_max_concurrency": _env_int("GOOGLEWEB_MAX_CONCURRENCY", 1),
     }

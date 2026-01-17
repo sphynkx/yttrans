@@ -52,6 +52,9 @@ def load_config():
     build_hash = _env("BUILD_HASH", "dev")
     build_time = _env("BUILD_TIME", "")
 
+    job_lang_parallelism = _env_int("JOB_LANG_PARALLELISM", 1)
+
+
     return {
         "app_name": "YurTube Caption Translate Service",
         "instance_id": instance_id,
@@ -64,6 +67,7 @@ def load_config():
         "default_source_lang": "auto",
         "timeout_sec": timeout_sec,
         "max_parallel": max_parallel,
+        "job_lang_parallelism": job_lang_parallelism,
         "redis_url": redis_url,
         "max_total_chars": max_total_chars,
         "auth_token": auth_token,

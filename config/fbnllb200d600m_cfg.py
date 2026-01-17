@@ -38,4 +38,5 @@ def load_fbnllb200d600m_config():
         "fbnllb200d600m_num_beams": _env_int("FBNLLB200D600M_NUM_BEAMS", 1),
         "fbnllb200d600m_batch_size": _env_int("FBNLLB200D600M_BATCH_SIZE", 8),
         "fbnllb200d600m_warmup": _env_int("FBNLLB200D600M_WARMUP", 0),
+        "fbnllb200d600m_max_concurrency": _env_int("FBNLLB200D600M_MAX_CONCURRENCY", 1),
     }

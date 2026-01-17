@@ -22,9 +22,6 @@ log = logging.getLogger("yttrans.worker_job")
 
 
 def _compute_job_weight(src_vtt: str, num_langs: int) -> int:
-    """
-    Simple heuristic: amount of work roughly proportional to text size * number of target languages.
-    """
     try:
         return int(len(src_vtt or "")) * int(num_langs or 0)
     except Exception:
@@ -32,23 +29,15 @@ def _compute_job_weight(src_vtt: str, num_langs: int) -> int:
 
 
 def _delay_for_job(weight: int, num_langs: int) -> float:
-    """
-    Anti-ban pacing. Tuneable heuristic.
-    """
     delay = 0.25
-
-    # language count threshold
     if num_langs >= 10:
         delay = 1.0
     if num_langs >= 20:
         delay = 1.8
-
-    # weight threshold (chars * langs)
     if weight >= 200_000:
         delay = max(delay, 1.5)
     if weight >= 500_000:
         delay = max(delay, 2.5)
-
     return delay
 
 
@@ -73,12 +62,6 @@ def _publish_partial(
     weight,
     ttl_sec=3600,
 ):
-    """
-    Publish incremental progress for UI:
-      - ready_langs: langs successfully produced (either batch or fallback)
-      - total_langs: requested count
-      - meta: diagnostics
-    """
     try:
         ready_langs = [e.get("lang", "") for e in (entries or []) if (e.get("lang") or "").strip()]
         total_langs = len(target_langs or [])
@@ -121,16 +104,29 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
     # Warmup: load model at service startup (optional)
     try:
         engine_l = (cfg.get("engine") or "").lower()
-        if engine_l == "fbm2m100" and int(cfg.get("fbm2m100_warmup") or 0) == 1:
-            log.info("fbm2m100 warmup: loading model...")
+        if engine_l in ("fbm2m100", "fbnllb200d600m") and int(cfg.get(f"{engine_l}_warmup", 0) or 0) == 1:
+            log.info("%s warmup: loading model...", engine_l)
             if hasattr(provider, "warmup"):
                 provider.warmup()
-            log.info("fbm2m100 warmup: done")
+            log.info("%s warmup: done", engine_l)
     except Exception as e:
-        log.warning("fbm2m100 warmup failed: %s", str(e))
+        log.warning("warmup failed: %s", str(e))
 
     # pull from global config
     max_total_chars = int(cfg.get("max_total_chars") or 4500)
+
+    # new: per-job language concurrency
+    job_lang_parallelism = int(cfg.get("job_lang_parallelism") or 1)
+
+    def _provider_max_concurrency() -> int:
+        # providers may expose max_concurrency attribute (int)
+        try:
+            v = getattr(provider, "max_concurrency", None)
+            if v is None:
+                return 1
+            return max(1, int(v))
+        except Exception:
+            return 1
 
     async def one_job(job_id):
         async with sem:
@@ -201,6 +197,19 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                 },
             }
 
+            state_lock = asyncio.Lock()
+
+            def _compute_percent(done_count: int) -> int:
+                return int(1 + (done_count / total) * 98)
+
+            def _compute_msg(done_count: int) -> str:
+                msg = f"translated {done_count}/{total}"
+                if failed_langs:
+                    msg += f", failed={len(failed_langs)}"
+                if fallback_langs:
+                    msg += f", fallback={len(fallback_langs)}"
+                return msg
+
             _publish_partial(
                 r=r,
                 job_id=job_id,
@@ -217,8 +226,27 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                 weight=weight,
             )
 
-            try:
-                for lang in target_langs:
+            # Effective per-job concurrency
+            eff = min(
+                max(1, job_lang_parallelism),
+                max(1, _provider_max_concurrency()),
+                max(1, len(target_langs)),
+            )
+            lang_sem = asyncio.Semaphore(eff)
+
+            log.info(
+                "job=%s video_id=%s lang_parallelism=%s provider_max_concurrency=%s effective=%s",
+                job_id,
+                video_id,
+                job_lang_parallelism,
+                _provider_max_concurrency(),
+                eff,
+            )
+
+            async def translate_one_lang(lang: str):
+                nonlocal done
+
+                async with lang_sem:
                     lang_started = now_ms()
                     log.info(
                         "job=%s video_id=%s lang=%s state=TRANSLATING weight=%s delay_sec=%.2f max_total_chars=%s",
@@ -231,10 +259,11 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                     )
 
                     try:
-                        # Prefer provider-native batch (no delimiters)
+                        # Prefer provider-native batch if available
                         if hasattr(provider, "translate_batch"):
                             translated_texts = provider.translate_batch(texts=texts, src_lang=src_lang, tgt_lang=lang)
                         else:
+
                             def translate_block_sync(block_text):
                                 return provider.translate(text=block_text, src_lang=src_lang, tgt_lang=lang)
 
@@ -248,10 +277,11 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                         vtt_tgt = vtt_body + ("\n" if src_has_trailing_nl else "")
 
                         entry = {"lang": lang, "vtt": vtt_tgt}
-                        entries.append(entry)
 
-                        progressive_result["entries"].append(entry)
-                        store_result(r, job_id, progressive_result, ttl_sec=3600)
+                        async with state_lock:
+                            entries.append(entry)
+                            progressive_result["entries"].append(entry)
+                            store_result(r, job_id, progressive_result, ttl_sec=3600)
 
                         took = now_ms() - lang_started
                         log.info(
@@ -263,6 +293,7 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                         )
 
                     except Exception as e:
+                        # fallback: line-by-line
                         if _is_batch_delim_mismatch(e):
                             log.warning(
                                 "job=%s video_id=%s lang=%s batch_failed_delim_mismatch -> fallback=line_by_line err=%s",
@@ -281,18 +312,20 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                             )
 
                         try:
+
                             def translate_line_sync(line):
                                 return provider.translate(text=line, src_lang=src_lang, tgt_lang=lang)
 
                             vtt_tgt = translate_vtt(src_vtt, translate_line_sync)
                             entry = {"lang": lang, "vtt": vtt_tgt}
-                            entries.append(entry)
 
-                            fallback_langs.append(lang)
+                            async with state_lock:
+                                entries.append(entry)
+                                fallback_langs.append(lang)
 
-                            progressive_result["entries"].append(entry)
-                            progressive_result["meta"]["fallback_langs"] = list(fallback_langs)
-                            store_result(r, job_id, progressive_result, ttl_sec=3600)
+                                progressive_result["entries"].append(entry)
+                                progressive_result["meta"]["fallback_langs"] = list(fallback_langs)
+                                store_result(r, job_id, progressive_result, ttl_sec=3600)
 
                             took = now_ms() - lang_started
                             log.info(
@@ -306,13 +339,15 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                         except Exception as e2:
                             took = now_ms() - lang_started
                             err_txt = str(e2)
-                            failed_langs.append(lang)
-                            errors[lang] = err_txt
 
-                            progressive_result["meta"]["failed_langs"] = list(failed_langs)
-                            progressive_result["meta"]["errors"] = dict(errors)
-                            progressive_result["meta"]["fallback_langs"] = list(fallback_langs)
-                            store_result(r, job_id, progressive_result, ttl_sec=3600)
+                            async with state_lock:
+                                failed_langs.append(lang)
+                                errors[lang] = err_txt
+
+                                progressive_result["meta"]["failed_langs"] = list(failed_langs)
+                                progressive_result["meta"]["errors"] = dict(errors)
+                                progressive_result["meta"]["fallback_langs"] = list(fallback_langs)
+                                store_result(r, job_id, progressive_result, ttl_sec=3600)
 
                             log.warning(
                                 "job=%s video_id=%s lang=%s state=FAILED duration_ms=%s err=%s",
@@ -323,44 +358,47 @@ async def run_workers(cfg, r, inmem_requests, stop_event):
                                 err_txt,
                             )
 
-                    done += 1
-                    percent = int(1 + (done / total) * 98)
-                    msg = f"translated {done}/{total}"
-                    if failed_langs:
-                        msg += f", failed={len(failed_langs)}"
-                    if fallback_langs:
-                        msg += f", fallback={len(fallback_langs)}"
+                    # update progress + partial publish
+                    async with state_lock:
+                        done += 1
+                        percent = _compute_percent(done)
+                        msg = _compute_msg(done)
 
-                    set_status(
-                        r,
-                        job_id,
-                        percent=percent,
-                        message=msg,
-                        meta={
-                            "engine": engine,
-                            "failed_langs": failed_langs,
-                            "fallback_langs": fallback_langs,
-                            "weight": weight,
-                        },
-                    )
+                        set_status(
+                            r,
+                            job_id,
+                            percent=percent,
+                            message=msg,
+                            meta={
+                                "engine": engine,
+                                "failed_langs": failed_langs,
+                                "fallback_langs": fallback_langs,
+                                "weight": weight,
+                            },
+                        )
 
-                    _publish_partial(
-                        r=r,
-                        job_id=job_id,
-                        video_id=video_id,
-                        state="RUNNING",
-                        percent=percent,
-                        message=msg,
-                        target_langs=target_langs,
-                        entries=entries,
-                        failed_langs=failed_langs,
-                        fallback_langs=fallback_langs,
-                        errors=errors,
-                        engine=engine,
-                        weight=weight,
-                    )
+                        _publish_partial(
+                            r=r,
+                            job_id=job_id,
+                            video_id=video_id,
+                            state="RUNNING",
+                            percent=percent,
+                            message=msg,
+                            target_langs=target_langs,
+                            entries=entries,
+                            failed_langs=failed_langs,
+                            fallback_langs=fallback_langs,
+                            errors=errors,
+                            engine=engine,
+                            weight=weight,
+                        )
 
+                    # pacing (per language)
                     await asyncio.sleep(delay_sec)
+
+            try:
+                tasks = [asyncio.create_task(translate_one_lang(lang)) for lang in target_langs]
+                await asyncio.gather(*tasks)
 
                 duration_ms = now_ms() - started
 

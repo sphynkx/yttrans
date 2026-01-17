@@ -87,7 +87,10 @@ FBM2M100_MAX_NEW_TOKENS=128
 FBM2M100_WARMUP=1
 FBM2M100_MAX_INPUT_TOKENS=1024
 FBM2M100_BATCH_SIZE=8
+FBM2M100_MAX_CONCURRENCY=1
 ```
+To parallel handle several langs - edit `FBM2M100_MAX_CONCURRENCY`.
+
 Restart service or docker container:
 ```bash
 docker-compose restart yttrans
@@ -111,7 +114,10 @@ FBNLLB200D600M_NUM_BEAMS=1
 FBNLLB200D600M_MAX_NEW_TOKENS=128
 FBNLLB200D600M_MAX_INPUT_TOKENS=1024
 # FBNLLB200D600M_TORCH_THREADS=4
+FBNLLB200D600M_MAX_CONCURRENCY=1
 ```
+To parallel handle several langs - edit `FBNLLB200D600M_MAX_CONCURRENCY`.
+
 Restart service or docker container:
 ```bash
 docker-compose restart yttrans
