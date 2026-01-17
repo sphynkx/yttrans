@@ -5,7 +5,7 @@ from utils.fbnllb200d600m_ut import (
     build_iso3_index,
     extract_nllb_lang_codes,
     iso_to_nllb,
-    list_iso_langs_supported_by_mapping,
+    list_ui_langs_from_nllb_codes,
 )
 
 
@@ -30,7 +30,6 @@ class Fbnllb200d600mProvider:
         self._ensure_loaded()
 
     def list_languages(self):
-        # if global whitelist configured - respect it
         whitelist = self.cfg.get("langs") or []
         if whitelist:
             supported = set(self._list_languages_all())
@@ -60,9 +59,9 @@ class Fbnllb200d600mProvider:
 
             try:
                 self._ensure_tokenizer_codes()
-                iso_langs = list_iso_langs_supported_by_mapping(self._nllb_codes_cache or [])
-                self._langs_cache = iso_langs
-                return iso_langs
+                langs = list_ui_langs_from_nllb_codes(self._nllb_codes_cache or [])
+                self._langs_cache = langs
+                return langs
             except Exception:
                 self._langs_cache = []
                 return []
@@ -98,7 +97,6 @@ class Fbnllb200d600mProvider:
                 self._model.to(device)
                 self._model.eval()
 
-                # build caches for iso->nllb conversion
                 self._nllb_codes_cache = extract_nllb_lang_codes(self._tokenizer)
                 self._iso3_index_cache = build_iso3_index(self._nllb_codes_cache)
 
@@ -130,19 +128,17 @@ class Fbnllb200d600mProvider:
 
         self._ensure_loaded()
 
-        src_iso = (src_lang or "auto").strip().lower() or "auto"
-        tgt_iso = (tgt_lang or "").strip().lower()
-        if not tgt_iso:
+        src_code = (src_lang or "auto").strip().lower() or "auto"
+        tgt_code = (tgt_lang or "").strip().lower()
+        if not tgt_code:
             raise RuntimeError("tgt_lang is required")
 
-        # If client passes auto, default to English.
-        if src_iso == "auto":
-            src_iso = "en"
+        if src_code == "auto":
+            src_code = "en"
 
         iso3_index = self._iso3_index_cache or {}
-
-        src_nllb = iso_to_nllb(src_iso, nllb_iso3_index=iso3_index)
-        tgt_nllb = iso_to_nllb(tgt_iso, nllb_iso3_index=iso3_index)
+        src_nllb = iso_to_nllb(src_code, nllb_iso3_index=iso3_index)
+        tgt_nllb = iso_to_nllb(tgt_code, nllb_iso3_index=iso3_index)
 
         import torch
 
@@ -151,7 +147,6 @@ class Fbnllb200d600mProvider:
         num_beams = int(self.cfg.get("fbnllb200d600m_num_beams") or 1)
         batch_size = int(self.cfg.get("fbnllb200d600m_batch_size") or 8)
 
-        # token-aware splitting for very long lines
         expanded = []
         mapping = []
         for t in texts:
@@ -194,7 +189,6 @@ class Fbnllb200d600mProvider:
 
             out_texts.extend(self._tokenizer.batch_decode(out, skip_special_tokens=True))
 
-        # merge segments back
         merged = []
         for start, end in mapping:
             merged.append("".join(out_texts[start:end]))
