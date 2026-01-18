@@ -91,6 +91,14 @@ class Fbnllb200d600mProvider:
 
             try:
                 import torch
+################
+                import sys, transformers, importlib
+                print("PY:", sys.executable)
+                print("transformers:", transformers.__version__, transformers.__file__)
+                print("has AutoModelForSeq2SeqLM:", hasattr(transformers, "AutoModelForSeq2SeqLM"))
+                print("dir contains AutoModelForSeq2SeqLM:", "AutoModelForSeq2SeqLM" in dir(transformers))
+                print("spec:", importlib.util.find_spec("transformers"))
+################
                 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
                 torch_threads = int(self.cfg.get("fbnllb200d600m_torch_threads") or 0)
