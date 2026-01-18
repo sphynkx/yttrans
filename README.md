@@ -114,6 +114,7 @@ cd /opt/yttrans
 Configure and run as systemd service.
 ```bash
 cp install/yttrans.service /etc/systemd/system/
+systemctl daemon-reload
 systemctl enable --now yttrans
 journalctl -u yttrans -f
 ```
