@@ -20,7 +20,73 @@ pip install -r install/requirements.txt
 deactivate
 cp install/.env.example .env
 ```
-Optionally - configure `.env` with your options.
+Optionally - configure `.env` with your options, for example:
+```conf
+YTTRANS_HOST=127.0.0.1
+YTTRANS_PORT=9095
+
+
+# Optional auth. If empty - auth disabled.
+AUTH_TOKEN=XXXXXXXXX
+
+LOG_LEVEL=info
+
+BUILD_HASH=dev
+BUILD_TIME=2026-01-01T00:00:00Z
+
+
+## Langs amount to handle simultaneously
+JOB_LANG_PARALLELISM=4
+
+
+## Switch bettween providers, working with different translation models/services (default is `googleweb`)
+#YTTRANS_ENGINE=googleweb
+#YTTRANS_ENGINE=fbm2m100
+YTTRANS_ENGINE=fbnllb200d600m
+
+
+# YTTRANS_LANGS=en,ru,uk,de # Force limit lang list. All langs if empty.
+YTTRANS_LANGS=""
+YTTRANS_TIMEOUT_SEC=60
+YTTRANS_MAX_PARALLEL=2
+YTTRANS_QUEUE_REDIS_URL=redis://localhost:6379/0
+YTTRANS_MAXTOTALCHARS=4000
+
+
+
+## Translation providers
+
+# Params for googleweb provider
+GOOGLEWEB_ORDER=googletrans,deep
+GOOGLEWEB_QPS=2
+GOOGLEWEB_TIMEOUT_SEC=10
+GOOGLEWEB_RETRY_ATTEMPTS=3
+GOOGLEWEB_RETRY_BACKOFF_SEC=30
+GOOGLEWEB_MAX_CONCURRENCY=1
+
+
+# Params for fbm2m100 provider
+FBM2M100_MODEL=facebook/m2m100_418M
+FBM2M100_DEVICE=cpu
+FBM2M100_NUM_BEAMS=1
+FBM2M100_MAX_NEW_TOKENS=128
+# FBM2M100_TORCH_THREADS=4
+FBM2M100_WARMUP=1
+FBM2M100_MAX_INPUT_TOKENS=1024
+FBM2M100_BATCH_SIZE=8
+FBM2M100_MAX_CONCURRENCY=1
+
+
+# Params for fbnllb200d600m provider
+FBNLLB200D600M_WARMUP=1
+FBNLLB200D600M_BATCH_SIZE=8
+FBNLLB200D600M_NUM_BEAMS=1
+FBNLLB200D600M_MAX_NEW_TOKENS=128
+FBNLLB200D600M_MAX_INPUT_TOKENS=1024
+# FBNLLB200D600M_TORCH_THREADS=4
+FBNLLB200D600M_MAX_CONCURRENCY=1
+
+```
 
 Install Redis:
 ```bash
@@ -37,7 +103,7 @@ cd ..
 
 
 ### Manual run
-For testing purposes:
+Run service manually first time to initiate downloading of big model files:
 ```bash
 cd /opt/yttrans
 ./run.sh
