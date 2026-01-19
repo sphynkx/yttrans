@@ -22,9 +22,13 @@ cp install/.env.example .env
 ```
 Optionally - configure `.env` with your options, for example:
 ```conf
-YTTRANS_HOST=127.0.0.1
+## This IP will send as service IP
+YTTRANS_HOST=192.168.7.20
 YTTRANS_PORT=9095
 
+## IP of yurtube app, or 127.0.0.1,  or 0.0.0.0 for any
+YTTRANS_BIND_HOST=0.0.0.0
+YTTRANS_BIND_PORT=9095
 
 # Optional auth. If empty - auth disabled.
 AUTH_TOKEN=XXXXXXXXX

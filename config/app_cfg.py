@@ -1,6 +1,5 @@
 import os
 import socket
-import uuid
 
 
 def _env(name, default=""):
@@ -30,8 +29,19 @@ def _env_list(name, default_csv):
 def load_config():
     hostname = socket.gethostname()
 
-    host = _env("YTTRANS_HOST", "0.0.0.0")
-    port = _env_int("YTTRANS_PORT", 9095)
+    # Bind addr (server listen address). Only BIND_* controls this.
+    bind_host = _env("YTTRANS_BIND_HOST", "0.0.0.0")
+    bind_port = _env_int("YTTRANS_BIND_PORT", 9095)
+
+    # Public/advertise addr (what clients should connect to).
+    # These names are now reserved for PUBLIC endpoint only.
+    public_host = _env("YTTRANS_HOST", "").strip()
+    public_port = _env_int("YTTRANS_PORT", bind_port)
+
+    # If public host not set, do NOT guess docker-internal IPs (172.*).
+    # Better to return nothing than return a wrong address.
+    if public_host in ("0.0.0.0", "127.0.0.1", "localhost"):
+        public_host = ""
 
     # IMPORTANT: default instance_id should match other services (often hostname)
     instance_id = _env("INSTANCE_ID", hostname)
@@ -43,7 +53,6 @@ def load_config():
     max_parallel = _env_int("YTTRANS_MAX_PARALLEL", 2)
     redis_url = _env("YTTRANS_QUEUE_REDIS_URL", "redis://localhost:6379/0")
 
-    # Limits for google-web
     max_total_chars = _env_int("YTTRANS_MAXTOTALCHARS", 4500)
 
     auth_token = _env("AUTH_TOKEN", "")
@@ -54,13 +63,9 @@ def load_config():
 
     job_lang_parallelism = _env_int("JOB_LANG_PARALLELISM", 1)
 
-
     return {
         "app_name": "YurTube Caption Translate Service",
         "instance_id": instance_id,
-        "host": host,
-        "port": port,
-        "bind_addr": f"{host}:{port}",
         "hostname": hostname,
         "engine": engine,
         "langs": langs,
@@ -75,4 +80,11 @@ def load_config():
         "build_hash": build_hash,
         "build_time": build_time,
         "version": "0.1.0",
+        # bind/listen
+        "bind_host": bind_host,
+        "bind_port": bind_port,
+        "bind_addr": f"{bind_host}:{bind_port}",
+        # public/advertise
+        "advertise_host": public_host,
+        "advertise_port": public_port,
     }

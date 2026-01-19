@@ -18,9 +18,7 @@ services:
     env_file:
       - ../../.env
     environment:
-      YTTRANS_QUEUE_REDIS_URL: redis://redis:6379/0
-      YTTRANS_HOST: 0.0.0.0
-      YTTRANS_PORT: 9095
+      YTTRANS_QUEUE_REDIS_URL: redis://127.0.0.1:6379/0
     volumes:
       - ../..:/opt/yttrans
       - ../../.env:/opt/yttrans/.env:ro

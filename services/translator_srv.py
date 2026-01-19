@@ -38,19 +38,38 @@ def _dict_to_struct(d):
     return st
 
 
+def _service_endpoint_meta(cfg):
+    """
+    What clients should use to connect to this service.
+    Values are configured in app_cfg.py:
+      - advertise_host / advertise_port
+    """
+    host = (cfg.get("advertise_host") or "").strip()
+    port = cfg.get("advertise_port") or ""
+
+    meta = {}
+    if host:
+        meta["host"] = host
+    if port != "" and port is not None:
+        meta["port"] = str(port)
+
+    return meta
+
+
 def _provider_meta(provider, cfg):
     """
-    Returns dict with extra meta fields:
-      engine, model, device, ...
+    Returns dict with extra meta fields for UI:
+      engine, model, device, host, port, ...
     Provider may optionally define get_meta() -> dict.
     """
     meta = {"engine": cfg.get("engine")}
+    meta.update(_service_endpoint_meta(cfg))
 
     try:
         if provider and hasattr(provider, "get_meta"):
             m = provider.get_meta()
             if isinstance(m, dict):
-                # merge (provider can override engine if it wants)
+                # don't include empty values
                 meta.update({k: v for k, v in m.items() if v is not None and v != ""})
     except Exception as e:
         meta["warning"] = f"provider_get_meta_failed: {e}"
@@ -127,6 +146,8 @@ class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
         log.info("submit job=%s video_id=%s engine=%s targets=%s", job_id, video_id, engine, target_langs)
 
         meta = {"queue": "redis", "engine": engine}
+        meta.update(_service_endpoint_meta(self.cfg))
+
         return yttrans_pb2.JobAck(job_id=job_id, accepted=True, message="accepted", meta=_dict_to_struct(meta))
 
     def GetStatus(self, request, context):
@@ -143,7 +164,7 @@ class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
         meta = dict(st.get("meta") or {})
         meta["engine"] = st.get("engine") or self.cfg.get("engine")
 
-        # add provider info (model/device) for UI
+        # Add provider & endpoint info
         meta.update(_provider_meta(self.provider, self.cfg))
 
         if st.get("err"):
@@ -180,13 +201,11 @@ class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
         if total_langs is None:
             total_langs = len(st.get("target_langs") or [])
 
-        meta = {}
         try:
             meta = dict(part.get("meta") or {})
         except Exception:
             meta = {}
 
-        # Merge engine + provider info + status errors into meta
         meta["engine"] = st.get("engine") or self.cfg.get("engine")
         meta.update(_provider_meta(self.provider, self.cfg))
 
@@ -228,8 +247,6 @@ class TranslatorService(yttrans_pb2_grpc.TranslatorServicer):
 
         meta = res.get("meta") or {}
         meta["engine"] = meta.get("engine") or st.get("engine") or self.cfg.get("engine")
-
-        # add provider info (model/device)
         meta.update(_provider_meta(self.provider, self.cfg))
 
         reply = yttrans_pb2.TranslationsResult(
