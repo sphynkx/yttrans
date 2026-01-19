@@ -4,7 +4,8 @@ Currently service supports next translation services and models:
 * __Google__ __Translate__ web-service (default) - simplest variant without any hardware requirements, useful for initial tests only.
 * __M2M100__ __418M__ lang model from Facebook (~100 langs, [huggingface page](https://huggingface.co/facebook/m2m100_418M))
 * __NLLB-200__ lang model from Facebook (~200 langs, [huggingface page](https://huggingface.co/facebook/nllb-200-distilled-600M))
-
+* __MADLAB-400__ lang models from google (455 langs, [madlad400-10b-mt](https://huggingface.co/google/madlad400-10b-mt), [madlad400-3b-mt](https://huggingface.co/google/madlad400-3b-mt))
+Best quality has __NLLB-200__ model..
 
 
 ## Install and configure.
@@ -90,6 +91,17 @@ FBNLLB200D600M_MAX_INPUT_TOKENS=1024
 # FBNLLB200D600M_TORCH_THREADS=4
 FBNLLB200D600M_MAX_CONCURRENCY=1
 
+
+# Params for madlad400 provider
+MADLAD400_MODEL=google/madlad400-10b-mt
+##MADLAD400_MODEL=google/madlad400-3b-mt
+MADLAD400_DEVICE=cuda:0
+##MADLAD400_DEVICE=cpu
+MADLAD400_MAX_CONCURRENCY=1
+MADLAD400_BATCH_SIZE=1
+MADLAD400_MAX_INPUT_TOKENS=512
+MADLAD400_MAX_NEW_TOKENS=256
+MADLAD400_NUM_BEAMS=1
 ```
 
 Install Redis:
@@ -192,6 +204,39 @@ FBNLLB200D600M_MAX_INPUT_TOKENS=1024
 FBNLLB200D600M_MAX_CONCURRENCY=1
 ```
 To parallel handle several langs - edit `FBNLLB200D600M_MAX_CONCURRENCY`.
+
+Restart service or docker container:
+```bash
+docker-compose restart yttrans
+```
+or, in case of `.env` modifications:
+```bash
+docker-compose up -d --force-recreate yttrans
+```
+Check list of available languages and engine name:
+```bash
+grpcurl -plaintext 127.0.0.1:9095 yttrans.v1.Translator/ListLanguages
+```
+It is recommended to run this command - it will help the model fit into memory faster.
+
+
+### Configure provider with MADLAD-400 models
+Provider `madlad400` supports translation using __MADLAD-400__ __10B__ __MT__ or __MADLAD-400__ __3B__ __MT__ models from Facebook. Details about model see on its huggingface pages: [MADLAD-400 10B MT](https://huggingface.co/google/madlad400-10b-mt), [MADLAD-400 3B MT](https://huggingface.co/google/madlad400-3b-mt). Model supports 455 languages, but has worsk quality then previous model. Configuration is analogical. In `.env` set appropriate provider to `YTTRANS_ENGINE`, choose one of model variants and add specific params:
+```conf
+YTTRANS_ENGINE=madlad400
+
+# Params for madlad400 provider
+MADLAD400_MODEL=google/madlad400-10b-mt
+##MADLAD400_MODEL=google/madlad400-3b-mt
+MADLAD400_DEVICE=cuda:0
+##MADLAD400_DEVICE=cpu
+MADLAD400_MAX_CONCURRENCY=1
+MADLAD400_BATCH_SIZE=1
+MADLAD400_MAX_INPUT_TOKENS=512
+MADLAD400_MAX_NEW_TOKENS=256
+MADLAD400_NUM_BEAMS=1
+```
+To parallel handle several langs - edit `MADLAD400_MAX_CONCURRENCY`.
 
 Restart service or docker container:
 ```bash

@@ -6,6 +6,7 @@ from services.providers.hf_marian_prv import HfMarianProvider
 from services.providers.googleweb_prv import GoogleWebProvider
 from services.providers.fbm2m100_prv import Fbm2m100Provider
 from services.providers.fbnllb200d600m_prv import Fbnllb200d600mProvider
+from services.providers.madlad400_prv import Madlad400Provider
 
 
 def build_provider(cfg):
@@ -19,6 +20,9 @@ def build_provider(cfg):
 
     if engine == "fbnllb200d600m":
         return Fbnllb200d600mProvider(cfg)
+
+    if engine == "madlad400":
+        return Madlad400Provider(cfg)
 
 ## Dummys - 2DEL:
     if engine == "google":
