@@ -8,6 +8,7 @@ from config.googleweb_cfg import load_googleweb_config
 from config.fbm2m100_cfg import load_fbm2m100_config
 from config.fbnllb200d600m_cfg import load_fbnllb200d600m_config
 from config.madlad400_cfg import load_madlad400_config
+from config.mbart50_cfg import load_mbart50_config
 from services.grpc_srv import serve
 
 
@@ -33,6 +34,8 @@ def main():
         cfg.update(load_fbnllb200d600m_config())
     if engine == "madlad400":
         cfg.update(load_madlad400_config())
+    if engine == "mbart50":
+        cfg.update(load_mbart50_config())
 
     serve(cfg, host=args.host, port=args.port)
 

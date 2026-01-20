@@ -1,10 +1,11 @@
 [yttrans](https://github.com/sphynkx/yttrans) is supplemental service for [yurtube app](https://github.com/sphynkx/yurtube), based on gRPC+protobuf. It generates translations of captions on many different languages.
 
 Currently service supports next translation services and models:
-* __Google__ __Translate__ web-service (default) - simplest variant without any hardware requirements, useful for initial tests only.
+* __Google__ __Translate__ web-service (default) - simplest variant without any hardware requirements, useful for initial tests only. 105 langs.
 * __M2M100__ __418M__ lang model from Facebook (~100 langs, [huggingface page](https://huggingface.co/facebook/m2m100_418M))
 * __NLLB-200__ lang model from Facebook (~200 langs, [huggingface page](https://huggingface.co/facebook/nllb-200-distilled-600M))
 * __MADLAB-400__ lang models from google (455 langs, [madlad400-10b-mt](https://huggingface.co/google/madlad400-10b-mt), [madlad400-3b-mt](https://huggingface.co/google/madlad400-3b-mt))
+* __mBART-50__ lang model from Google (52 langs, [huggingface page](https://huggingface.co/facebook/mbart-large-50-many-to-many-mmt))
 Best quality has __NLLB-200__ model..
 
 
@@ -48,6 +49,8 @@ JOB_LANG_PARALLELISM=4
 #YTTRANS_ENGINE=googleweb
 #YTTRANS_ENGINE=fbm2m100
 YTTRANS_ENGINE=fbnllb200d600m
+#YTTRANS_ENGINE=madlad400
+#YTTRANS_ENGINE=mbart50
 
 
 # YTTRANS_LANGS=en,ru,uk,de # Force limit lang list. All langs if empty.
@@ -72,7 +75,8 @@ GOOGLEWEB_MAX_CONCURRENCY=1
 
 # Params for fbm2m100 provider
 FBM2M100_MODEL=facebook/m2m100_418M
-FBM2M100_DEVICE=cpu
+MADLAD400_DEVICE=cuda:0
+##FBM2M100_DEVICE=cpu
 FBM2M100_NUM_BEAMS=1
 FBM2M100_MAX_NEW_TOKENS=128
 # FBM2M100_TORCH_THREADS=4
@@ -102,6 +106,19 @@ MADLAD400_BATCH_SIZE=1
 MADLAD400_MAX_INPUT_TOKENS=512
 MADLAD400_MAX_NEW_TOKENS=256
 MADLAD400_NUM_BEAMS=1
+
+
+# Params for mbart50 provider
+MBART50_MODEL=facebook/mbart-large-50-many-to-many-mmt
+MADLAD400_DEVICE=cuda:0
+##MBART50_DEVICE=cpu
+MBART50_TORCH_THREADS=4
+MBART50_BATCH_SIZE=1
+MBART50_MAX_INPUT_TOKENS=512
+MBART50_MAX_NEW_TOKENS=256
+MBART50_NUM_BEAMS=1
+MBART50_MAX_CONCURRENCY=1
+
 ```
 
 Install Redis:
@@ -251,6 +268,42 @@ Check list of available languages and engine name:
 grpcurl -plaintext 127.0.0.1:9095 yttrans.v1.Translator/ListLanguages
 ```
 It is recommended to run this command - it will help the model fit into memory faster.
+
+
+### Configure provider with mBART-50 model
+Provider `mbart60` supports translation using __mbart-large-50-many-to-many-mmt__ model from Google. Details about model see on its [huggingface page](https://huggingface.co/facebook/mbart-large-50-many-to-many-mmt). Model supports 52 languages. Configuration is analogical. In `.env` set appropriate provider to `YTTRANS_ENGINE` and add specific params:
+```conf
+YTTRANS_ENGINE=mbart50
+
+# Params for mbart50 provider
+MBART50_MODEL=facebook/mbart-large-50-many-to-many-mmt
+MADLAD400_DEVICE=cuda:0
+##MBART50_DEVICE=cpu
+MBART50_TORCH_THREADS=4
+MBART50_BATCH_SIZE=1
+MBART50_MAX_INPUT_TOKENS=512
+MBART50_MAX_NEW_TOKENS=256
+MBART50_NUM_BEAMS=1
+MBART50_MAX_CONCURRENCY=1
+
+```
+To parallel handle several langs - edit `MBART50_MAX_CONCURRENCY`.
+
+Restart service or docker container:
+```bash
+docker-compose restart yttrans
+```
+or, in case of `.env` modifications:
+```bash
+docker-compose up -d --force-recreate yttrans
+```
+Check list of available languages and engine name:
+```bash
+grpcurl -plaintext 127.0.0.1:9095 yttrans.v1.Translator/ListLanguages
+```
+It is recommended to run this command - it will help the model fit into memory faster.
+
+__Note:__ Model cannot define source language and need to set source lang manually (on app side). Also model has bad quality and supports few langs. Not recommended to use. This provider has been left for experiments only.
 
 
 ## Test and usage

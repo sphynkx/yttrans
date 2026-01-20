@@ -7,6 +7,7 @@ from services.providers.googleweb_prv import GoogleWebProvider
 from services.providers.fbm2m100_prv import Fbm2m100Provider
 from services.providers.fbnllb200d600m_prv import Fbnllb200d600mProvider
 from services.providers.madlad400_prv import Madlad400Provider
+from services.providers.mbart50_prv import Mbart50Provider
 
 
 def build_provider(cfg):
@@ -23,6 +24,9 @@ def build_provider(cfg):
 
     if engine == "madlad400":
         return Madlad400Provider(cfg)
+
+    if engine == "mbart50":
+        return Mbart50Provider(cfg)
 
 ## Dummys - 2DEL:
     if engine == "google":
