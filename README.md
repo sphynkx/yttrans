@@ -271,7 +271,7 @@ It is recommended to run this command - it will help the model fit into memory f
 
 
 ### Configure provider with mBART-50 model
-Provider `mbart60` supports translation using __mbart-large-50-many-to-many-mmt__ model from Google. Details about model see on its [huggingface page](https://huggingface.co/facebook/mbart-large-50-many-to-many-mmt). Model supports 52 languages. Configuration is analogical. In `.env` set appropriate provider to `YTTRANS_ENGINE` and add specific params:
+Provider `mbart50` supports translation using __mbart-large-50-many-to-many-mmt__ model from Google. Details about model see on its [huggingface page](https://huggingface.co/facebook/mbart-large-50-many-to-many-mmt). Model supports 52 languages. Configuration is analogical. In `.env` set appropriate provider to `YTTRANS_ENGINE` and add specific params:
 ```conf
 YTTRANS_ENGINE=mbart50
 
